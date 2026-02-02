@@ -2,92 +2,109 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>極簡 P2P 語音 🎤</title>
+    <title>🎬 P2P 影音對講機 (螢幕+語音)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #00ff88; padding: 50px; }
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #00ff88; padding: 20px; }
         input { background: #333; border: 1px solid #00ff88; color: white; padding: 10px; border-radius: 5px; width: 100px; font-size: 1.2rem; text-align: center; }
         button { background: #00ff88; color: black; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; margin: 10px; }
         button:disabled { background: #555; }
-        #status { color: #aaa; margin-top: 20px; }
+        #status { color: #aaa; margin-top: 10px; }
+        video { width: 90%; max-width: 900px; border: 2px solid #00ff88; border-radius: 10px; margin-top: 20px; background: #000; box-shadow: 0 0 20px rgba(0,255,136,0.2); }
     </style>
 </head>
 <body>
 
-    <h2>⚡ P2P 語音對講機</h2>
+    <h2>🎥 P2P 螢幕 + 語音分享</h2>
     
     <div>
         <p>1. 設定你的 4 位 ID</p>
         <input type="text" id="myId" maxlength="4" placeholder="8888">
-        <button id="regBtn" onclick="initPeer()">上線</button>
+        <button id="regBtn" onclick="initPeer()">啟動並上線</button>
     </div>
 
-    <hr style="border: 0.5px solid #333; margin: 30px 0;">
+    <hr style="border: 0.5px solid #333; margin: 20px 0;">
 
     <div>
-        <p>2. 撥打對方 ID</p>
+        <p>2. 連接對方 ID</p>
         <input type="text" id="destId" maxlength="4" placeholder="6666">
-        <button id="callBtn" onclick="makeCall()" disabled>撥號 (Call)</button>
+        <button id="callBtn" onclick="makeCall()" disabled>撥號連線</button>
     </div>
 
     <p id="status">狀態: 等待上線...</p>
     
-    <audio id="remoteAudio" autoplay></audio>
+    <video id="remoteVideo" autoplay playsinline controls></video>
 
     <script>
         let peer, localStream;
 
-        // 初始化：獲取麥克風並連接 PeerJS 公開伺服器
         async function initPeer() {
             const id = document.getElementById('myId').value;
             if (id.length < 4) return alert("請輸入 4 位數 ID！");
 
             try {
-                // 獲取語音流
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                document.getElementById('status').innerText = "正在取得螢幕與麥克風權限...";
                 
-                // 連接公開伺服器 (PeerJS 預設雲端伺服器)
+                // 1. 獲取螢幕畫面
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: true,
+                    audio: true // 包含電腦系統音
+                });
+
+                // 2. 獲取麥克風聲音
+                const micStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: true 
+                });
+
+                // 3. 把麥克風的音軌加進螢幕串流裡
+                const micTrack = micStream.getAudioTracks()[0];
+                screenStream.addTrack(micTrack);
+                
+                localStream = screenStream;
+                
                 peer = new Peer(id);
 
                 peer.on('open', (openedId) => {
-                    document.getElementById('status').innerText = "上線成功！你的 ID 是: " + openedId;
+                    document.getElementById('status').innerText = "上線成功！ID: " + openedId;
                     document.getElementById('regBtn').disabled = true;
                     document.getElementById('callBtn').disabled = false;
                 });
 
-                // 監聽別人的呼叫
                 peer.on('call', (call) => {
-                    console.log("收到來電...");
-                    call.answer(localStream); // 接聽並傳送自己的聲音
+                    // 接聽時也把自己的螢幕+聲音傳過去
+                    call.answer(localStream); 
                     setupStream(call);
                 });
 
                 peer.on('error', (err) => {
                     alert("錯誤: " + err.type);
-                    console.error(err);
                 });
 
+                // 當停止分享螢幕時自動重整
+                localStream.getVideoTracks()[0].onended = () => {
+                    location.reload();
+                };
+
             } catch (e) {
-                alert("請允許麥克風權限，否則無法連線！");
+                console.error(e);
+                alert("必須允許螢幕分享與麥克風才能正常運作！");
             }
         }
 
-        // 撥打電話
         function makeCall() {
             const dest = document.getElementById('destId').value;
             if (!dest) return;
             
-            document.getElementById('status').innerText = "正在呼叫: " + dest;
+            document.getElementById('status').innerText = "正在連線: " + dest;
             const call = peer.call(dest, localStream);
             setupStream(call);
         }
 
-        // 處理語音串流
         function setupStream(call) {
             call.on('stream', (remoteStream) => {
-                const audio = document.getElementById('remoteAudio');
-                audio.srcObject = remoteStream;
-                document.getElementById('status').innerText = "通話中 - 正在連線對方...";
+                const video = document.getElementById('remoteVideo');
+                video.srcObject = remoteStream;
+                document.getElementById('status').innerText = "通話中 - 影音同步傳輸中";
                 document.getElementById('status').style.color = "#00ff88";
             });
         }
